@@ -1,0 +1,16 @@
+[Unit]
+Description=Claude Hub — multi-provider router + API gateway for Claude Code
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.claude-hub
+ExecStart=/usr/bin/env python3 -m uvicorn server:app --host 127.0.0.1 --port 8765 --app-dir %h/.claude-hub
+Restart=always
+RestartSec=3
+TimeoutStartSec=30
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

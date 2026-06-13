@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# claude-deep — unified Claude Code launcher (menu pilih provider)
+# Profiles dibaca dari Claude Hub DB. Tambah/edit lewat http://localhost:8765
+#
+# Pakai:
+#   claude-deep              -> tampil menu, pilih nomor
+#   claude-deep 2            -> langsung provider #2 (skip menu)
+#   claude-deep 2 -p "hi"    -> headless ke provider #2
+#   claude-deep -p "hi"      -> headless, tetap tampil menu dulu
+set -uo pipefail
+
+DB="$HOME/.claude-hub/profiles.db"
+CLAUDE="$HOME/.local/bin/claude"
+SEP=$'\x1f'
+
+[ -f "$DB" ] || { echo "DB tidak ada: $DB" >&2; exit 1; }
+command -v sqlite3 >/dev/null || { echo "sqlite3 belum terinstall" >&2; exit 1; }
+
+# Ambil semua profile (urut nama)
+mapfile -t ROWS < <(sqlite3 -noheader -separator "$SEP" "$DB" \
+  "SELECT name, base_url, auth_token,
+          COALESCE(NULLIF(opus_model,''),''),
+          COALESCE(NULLIF(sonnet_model,''),''),
+          COALESCE(NULLIF(haiku_model,''),''),
+          COALESCE(NULLIF(extra_args,''),'--dangerously-skip-permissions')
+   FROM profiles ORDER BY name;")
+
+N=${#ROWS[@]}
+[ "$N" -gt 0 ] || { echo "Belum ada profile. Tambah di http://localhost:8765" >&2; exit 1; }
+
+# Warna (cuma kalau output ke terminal)
+if [ -t 1 ]; then
+  C0=$'\e[0m'; CB=$'\e[1m'; CG=$'\e[32m'; CD=$'\e[2m'; CY=$'\e[33m'; CC=$'\e[36m'
+else C0=; CB=; CG=; CD=; CY=; CC=; fi
+
+# Pilihan langsung lewat argumen angka?
+choice=""
+if [ "${1:-}" ] && [[ "$1" =~ ^[0-9]+$ ]]; then choice="$1"; shift; fi
+
+if [ -z "$choice" ]; then
+  echo
+  echo "  ${CB}${CG}⚡ Claude Launcher${C0}  ${CD}— pilih provider, lalu Enter${C0}"
+  echo "  ${CD}────────────────────────────────────────────${C0}"
+  i=1
+  for row in "${ROWS[@]}"; do
+    IFS="$SEP" read -r name base _tok opus sonnet haiku _extra <<<"$row"
+    printf "  ${CB}${CY}%2d${C0})  ${CB}${CC}claude-%s${C0}\n" "$i" "$name"
+    printf "       ${CD}%s${C0}\n" "$base"
+    printf "       ${CD}opus=${C0}%s  ${CD}sonnet=${C0}%s  ${CD}haiku=${C0}%s\n" \
+           "${opus:--}" "${sonnet:--}" "${haiku:--}"
+    i=$((i+1))
+  done
+  echo "  ${CD}────────────────────────────────────────────${C0}"
+  printf "  ${CD} q)  keluar${C0}\n\n"
+  printf "  Pilih [1-%d]: " "$N"
+  read -r choice || exit 0
+fi
+
+[ "$choice" = "q" ] || [ "$choice" = "Q" ] && { echo "bye 👋"; exit 0; }
+
+if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "$N" ]; then
+  echo "${CY}Pilihan tidak valid: '$choice'${C0}" >&2; exit 1
+fi
+
+IFS="$SEP" read -r name base tok opus sonnet haiku extra <<<"${ROWS[$((choice-1))]}"
+
+# Route via hub proxy (per-provider path) → Claude Code pakai built-in
+# opus/sonnet/haiku names → auto-compact default jalan (Opus 1M otomatis).
+export ANTHROPIC_BASE_URL="http://localhost:8765/p/${name}/v1"
+export ANTHROPIC_AUTH_TOKEN="deep-${name}"
+unset ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+unset ANTHROPIC_SMALL_FAST_MODEL ANTHROPIC_MODEL
+
+echo "${CG}→ masuk claude-${name}${C0} ${CD}(${base})${C0}"
+exec "$CLAUDE" $extra "$@"

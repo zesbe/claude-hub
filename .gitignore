@@ -1,0 +1,21 @@
+# SECRETS — never commit these
+profiles.db
+profiles.db-*
+profiles.db.*
+gateway.json
+*.bak
+*.bak.*
+.env
+.env.*
+
+# runtime
+server.log
+server.pid
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
