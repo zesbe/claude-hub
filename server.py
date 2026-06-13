@@ -84,6 +84,23 @@ def init_db():
             created_at  TEXT DEFAULT CURRENT_TIMESTAMP
         );
         """)
+        # Idempotent migration: per-slot context window + max output columns.
+        # Runs on every boot; safe on fresh installs (adds them) and existing
+        # DBs (duplicate-column errors are ignored). This is what lets a fresh
+        # install create providers — without it, INSERT referencing these fails.
+        migrations = [
+            ("opus_ctx",    "INTEGER DEFAULT 1000000"),
+            ("opus_out",    "INTEGER DEFAULT 128000"),
+            ("sonnet_ctx",  "INTEGER DEFAULT 1000000"),
+            ("sonnet_out",  "INTEGER DEFAULT 64000"),
+            ("haiku_ctx",   "INTEGER DEFAULT 200000"),
+            ("haiku_out",   "INTEGER DEFAULT 64000"),
+        ]
+        for col, decl in migrations:
+            try:
+                c.execute(f"ALTER TABLE profiles ADD COLUMN {col} {decl}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -116,7 +133,13 @@ def maybe_import_existing():
             env[k.strip()] = v.strip().strip('"').strip("'")
         if "ANTHROPIC_BASE_URL" not in env:
             continue
+        # Skip launcher/template scripts (claude-deep menu uses ${name}),
+        # not real per-provider wrappers.
+        if "${" in env.get("ANTHROPIC_BASE_URL", ""):
+            continue
         name = f.name[len("claude-"):]
+        if name in ("deep", "worker", "hub", "all", "session-sync"):
+            continue
         try:
             with db() as c:
                 c.execute("""

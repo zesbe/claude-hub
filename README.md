@@ -48,7 +48,7 @@ The installer:
 - installs Python deps (uses a venv automatically if your system blocks `pip --user`)
 - sets up a **systemd `--user` service** with `Restart=always` + lingering, so the hub **auto-starts on boot and auto-restarts on crash**
 
-**Requirements:** `python3` (3.10+), and `sqlite3` CLI (optional — only needed for the `claude-deep` menu).
+**Requirements:** `python3` (3.9+), and `sqlite3` CLI (optional — only needed for the `claude-deep` menu).
 
 ---
 
